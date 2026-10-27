@@ -11,23 +11,22 @@ const STATUS_BADGE: Record<string, string> = {
 
 export default function OrdersPanel() {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-1 text-base font-semibold text-gray-900">Test Orders Helper</h2>
+    <section className="orders-panel panel">
+      <div className="panel-heading"><h2>Orders to try</h2><span className="panel-meta">3 sample orders</span></div>
       <p className="mb-3 text-xs text-gray-500">
-        Keep this open while you test - use these IDs when Aria asks for the order number.
+        Use one of these sample order IDs when Aria asks for your order number.
       </p>
-      <div className="space-y-3">
+      <div className="order-list">
         {ORDERS.map((o) => (
-          <div key={o.order_id} className="rounded-lg border border-gray-200 p-3 text-sm">
+          <div key={o.order_id} className="order-row text-sm">
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono font-semibold text-gray-900">{o.order_id}</span>
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[o.status] ?? "bg-gray-100 text-gray-700"}`}>
                 {o.status}
               </span>
             </div>
-            <p className="mt-1 text-gray-700">
-              {o.customer_name} · {o.items} · ₹{o.amount_inr}
-            </p>
+            <p className="order-customer">{o.customer_name}<span>₹{o.amount_inr.toLocaleString("en-IN")}</span></p>
+            <p className="order-product">{o.items}</p>
             <p className="mt-1 text-xs text-gray-500">
               {o.courier !== "-" ? `${o.courier} ${o.tracking_id} · ` : ""}
               {o.delivery_info}

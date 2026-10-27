@@ -1,0 +1,2 @@
+# Aura Skincare / Aria
+A browser-based voice support demo for a fictional skincare brand. Users start a microphone call, ask about orders, shipping, cancellation, returns, and COD, then inspect a timestamped transcript and structured summary. Sample orders support testing. Browser speech recognition and synthesis connect to existing server APIs. Desktop and mobile browsers are supported visually; voice requires Chrome or Edge and microphone permission. This redesign preserves API and voice behavior.

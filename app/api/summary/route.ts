@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { SUMMARY_SCHEMA, SUMMARY_SYSTEM_PROMPT } from "@/lib/summary";
 
 // Generates the structured post-call summary with strict JSON output.
 // Uses the normal (non-realtime) Chat Completions API.
 
-const SUMMARY_MODEL = process.env.NVIDIA_SUMMARY_MODEL ?? "nvidia/nemotron-3-ultra-550b-a55b";
+const SUMMARY_MODEL = process.env.NVIDIA_SUMMARY_MODEL ?? "nvidia/nemotron-3.5-bolt-e4b";
 const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 
 export interface SummaryInput {
@@ -11,33 +12,6 @@ export interface SummaryInput {
   text: string;
   at: number;
 }
-
-const SUMMARY_SCHEMA = {
-  type: "object",
-  properties: {
-    customer_intent: {
-      type: "string",
-      enum: [
-        "ORDER_TRACKING",
-        "CANCELLATION",
-        "RETURN_REFUND",
-        "SHIPPING_INFO",
-        "COD_INFO",
-        "PRODUCT_INFO",
-        "OUT_OF_SCOPE",
-        "OTHER",
-      ],
-    },
-    order_id: { type: ["string", "null"], description: "Canonical order ID like ORD-101, or null." },
-    resolution_status: {
-      type: "string",
-      enum: ["RESOLVED", "UNRESOLVED", "ESCALATED", "OUT_OF_SCOPE"],
-    },
-    call_summary: { type: "string", description: "1-3 sentence summary of the call." },
-  },
-  required: ["customer_intent", "order_id", "resolution_status", "call_summary"],
-  additionalProperties: false,
-} as const;
 
 export async function POST(req: Request) {
   const apiKey = process.env.NVIDIA_API_KEY;
@@ -68,20 +42,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Transcript is empty - nothing to summarize." }, { status: 400 });
   }
 
-  const systemPrompt = [
-    "You are an analytics assistant for Aura Skincare customer support calls.",
-    "Read the voice-call transcript below and produce the structured summary.",
-    "Guidelines:",
-    "- customer_intent: the customer's primary reason for calling, using exactly one enum value.",
-    "- order_id: the order ID discussed, normalized to the form ORD-<number> (e.g. ORD-101); null if none.",
-    "- resolution_status: RESOLVED if the customer's question/request was answered or handled within policy,",
-    "  UNRESOLVED if it could not be handled (e.g. outside policy windows, not-found order, not completed),",
-    "  ESCALATED if it needs a human follow-up (e.g. an action the agent cannot perform),",
-    "  OUT_OF_SCOPE if the request was unrelated to Aura Skincare.",
-    "- call_summary: 1-3 sentences, factual, mention the outcome.",
-    "Base everything strictly on the transcript. Never invent details.",
-  ].join(" ");
-
   try {
     const res = await fetch(NVIDIA_URL, {
       method: "POST",
@@ -101,7 +61,7 @@ export async function POST(req: Request) {
           },
         },
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: SUMMARY_SYSTEM_PROMPT },
           { role: "user", content: "Transcript:\n\n" + lines.join("\n") },
         ],
       }),

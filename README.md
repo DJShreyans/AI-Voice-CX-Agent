@@ -43,7 +43,7 @@ A browser-based voice customer-support agent for a fictional D2C skincare brand,
 | Speech-to-text | Browser Web Speech API (`SpeechRecognition`, `en-IN`) |
 | LLM + tools | NVIDIA NIM (OpenAI-compatible chat completions), default `nvidia/nemotron-3.5-bolt-e4b` |
 | Text-to-speech | Browser `speechSynthesis`, prefers an `en-IN` voice (Edge's neural "Neerja" is best) |
-| Summary | NVIDIA NIM with strict `json_schema` output, default `nvidia/nemotron-3-ultra-550b-a55b` |
+| Summary | NVIDIA NIM with strict `json_schema` output, default `nvidia/nemotron-3.5-bolt-e4b` (1.8s vs 8.3s for the 550B model, same 6/6 on `scripts/summary-eval.ts`) |
 | Order DB | In-memory mock in `lib/orders.ts` |
 
 ## Project structure
@@ -52,17 +52,32 @@ A browser-based voice customer-support agent for a fictional D2C skincare brand,
 app/
   page.tsx                 # main UI (call controls, state, transcript, summary)
   layout.tsx
-  api/chat/route.ts        # one conversation turn: NVIDIA chat + tool loop
+  api/chat/route.ts        # HTTP wrapper for one conversation turn
   api/order/route.ts       # order lookup endpoint (same logic the tool uses)
   api/summary/route.ts     # strict-JSON post-call summary
 lib/
+  chat.ts                  # NVIDIA chat call, tool loop, guaranteed order lookup
+  greeting.ts              # Aria's opening line (spoken by the client, seeded in history)
   orders.ts                # mock orders + order-ID normalization
   prompt.ts                # Aria system prompt + tool definition
   voice.ts                 # speech recognition / synthesis turn loop
 components/
   StateIndicator.tsx  OrdersPanel.tsx  Transcript.tsx  SummaryCard.tsx
+scripts/
+  eval.ts                  # 16-scenario behaviour eval (npm run eval)
 .env.example
 ```
+
+## Automated behaviour eval
+
+Voice agents regress silently when the prompt or model changes, so `npm run eval` replays 16 scripted customer scenarios from the brief through the *same* code the app uses (`lib/chat.ts`, the real prompt, tool and mock orders) and checks each reply: correct tool call, policy verdict, no invented data, brevity, no markdown. Pass `npm run eval -- <model-a> <model-b>` to compare models.
+
+| Model | Result | Latency / scenario |
+|---|---|---|
+| `nvidia/nemotron-3.5-bolt-e4b` (default) | 16/16 (two runs) | ~0.7s |
+| `nvidia/nemotron-3.5-lightning-30b-a3b` | 14/16 | ~8.7s (up to 35s) |
+
+The first version of the prompt scored 9/16 on the small model: it re-greeted instead of answering, asked for order IDs the customer had already given, and skipped the tool for returns/cancellations. The fixes were removing the stale "first message is a greeting" instruction, telling the model to look up any stated order number immediately, and moving the lookup for explicit order mentions into code. The eval checks policy wording with regexes, so it is a regression guard, not proof of perfect behaviour.
 
 ## Setup & run
 
@@ -83,7 +98,7 @@ npm run dev                       # http://localhost:3000
 |---|---|---|
 | `NVIDIA_API_KEY` | — (required) | Server-side only. Never shipped to the browser. |
 | `NVIDIA_CHAT_MODEL` | `nvidia/nemotron-3.5-bolt-e4b` | Live conversation model (needs tool calling, low latency). |
-| `NVIDIA_SUMMARY_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b` | Post-call JSON summary model. |
+| `NVIDIA_SUMMARY_MODEL` | `nvidia/nemotron-3.5-bolt-e4b` | Post-call JSON summary model. |
 
 ## Deploy to Vercel
 
@@ -95,10 +110,11 @@ npm run dev                       # http://localhost:3000
 ## How tool calling works
 
 1. `lib/prompt.ts` defines `get_order_details(order_id)`; `/api/chat` sends it with `tool_choice: "auto"`.
-2. The system prompt says: for anything about a specific order, get the ID first, then call the tool before answering. The model decides to call it; the server never pre-fetches.
-3. `/api/chat` receives the `tool_calls`, normalizes the ID (`"ORD 101"`, `"order 101"`, `"ord101"`, `"1 0 1"`, `"101"` → `ORD-101`) and looks it up in `lib/orders.ts`.
-4. The result is `{ found: true, order }` — including derived policy fields (`cancellable`, `returnable`, `days_since_delivery`, return-window notes) so the model reads the verdict instead of computing it — or `{ found: false, error: "ORDER_NOT_FOUND" | "MISSING_ORDER_ID" }`.
-5. It goes back to the model as a `tool` message and the model produces the spoken reply. If the tool says not found, she asks the customer to repeat or verify.
+2. The system prompt says: for anything about a specific order, get the ID first, then call the tool before answering, so the model decides when to call it (this covers spoken forms like "one zero one").
+3. As a safety net, `lib/chat.ts` also detects an explicit mention such as "ORD 101" / "order number 102" in the customer's message and runs the lookup itself *before* the model replies, handing it the result. Small models sometimes skip the call or ask for an ID they were already given; this makes that impossible and guarantees "order not found" is answered from real tool output.
+4. `/api/chat` receives any further `tool_calls`, normalizes the ID (`"ORD 101"`, `"order 101"`, `"ord101"`, `"1 0 1"`, `"101"` → `ORD-101`) and looks it up in `lib/orders.ts`.
+5. The result is `{ found: true, order }` — including derived policy fields (`cancellable`, `returnable`, `days_since_delivery`, return-window notes) so the model reads the verdict instead of computing it — or `{ found: false, error: "ORDER_NOT_FOUND" | "MISSING_ORDER_ID" }`.
+6. It goes back to the model as a `tool` message and the model produces the spoken reply. If the tool says not found, she asks the customer to repeat or verify.
 
 ## How guardrails are implemented
 
@@ -138,7 +154,7 @@ Also verify: the state pill (Listening / Thinking / Speaking), customer + Aria t
 
 ### 1. Why this architecture and stack
 
-I built a modular pipeline — browser STT → NVIDIA NIM LLM with tool calling → browser TTS — because it keeps the interesting part (reasoning, tools, guardrails) on the server in plain text where I can see and test it, and keeps the audio part free and zero-latency to the network. The browser's Web Speech API gives streaming recognition and an Indian-English voice with no extra vendor, key, or per-minute cost, which suits a take-home that must be publicly testable on a free tier. NVIDIA NIM exposes an OpenAI-compatible chat endpoint with function calling, so the tool loop is a few lines of server code, and the model is swappable with one environment variable (I measured several: the small `nemotron-3.5-bolt-e4b` answers in ~0.7s, while the 550B model takes ~3.7s per call, which is too slow for conversation but good for the offline summary).
+I built a modular pipeline — browser STT → NVIDIA NIM LLM with tool calling → browser TTS — because it keeps the interesting part (reasoning, tools, guardrails) on the server in plain text where I can see and test it, and keeps the audio part free and zero-latency to the network. The browser's Web Speech API gives streaming recognition and an Indian-English voice with no extra vendor, key, or per-minute cost, which suits a take-home that must be publicly testable on a free tier. NVIDIA NIM exposes an OpenAI-compatible chat endpoint with function calling, so the tool loop is a few lines of server code, and the model is swappable with one environment variable (I measured several: the small `nemotron-3.5-bolt-e4b` answers in ~0.7s, while the 550B model takes ~3.7s per call and ~8s for the summary, so I used the small model for both after checking its summary labels with a scripted eval).
 
 The trade-off is voice quality and control: the browser voice is more robotic than a neural TTS, recognition quality depends on Chrome's service, and I can't do barge-in cleanly without echo cancellation across the TTS/STT boundary. With more time I'd swap the two browser pieces for a streaming STT and neural TTS — the server contract (`text in, text out`) wouldn't change.
 

@@ -50,9 +50,9 @@ export default function SummaryCard({
   }
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <section className="summary-panel panel">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-900">Call Summary</h2>
+        <h2 className="section-title">Call Summary</h2>
         {summary && (
           <button
             onClick={copyJson}
@@ -68,7 +68,7 @@ export default function SummaryCard({
       {error && !loading && <p className="mt-3 text-sm text-rose-600">{error}</p>}
 
       {!loading && !error && !summary && (
-        <p className="mt-3 text-sm text-gray-500">The structured summary appears here after you end a call.</p>
+        <p className="mt-3 text-sm text-gray-500">After your call, find the key details and next steps here.</p>
       )}
 
       {summary && !loading && (

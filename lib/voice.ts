@@ -7,6 +7,8 @@
 //  3. Aria's reply is spoken with speechSynthesis, then we listen again.
 // Recognition is paused while Aria speaks so she doesn't hear herself.
 
+import { ARIA_GREETING } from "./greeting";
+
 export type AgentState = "idle" | "connecting" | "listening" | "thinking" | "speaking";
 
 export interface TranscriptEntry {
@@ -63,7 +65,7 @@ function getRecognitionCtor(): SpeechRecognitionCtor | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
-const GREETING = "Hello! I'm Aria from Aura Skincare. How can I help you today?";
+const GREETING = ARIA_GREETING;
 const LANG = "en-IN";
 
 interface ChatTurn {

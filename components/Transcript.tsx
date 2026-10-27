@@ -15,12 +15,10 @@ export default function Transcript({ entries }: { entries: TranscriptEntry[] }) 
   }, [entries.length]);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-2 text-base font-semibold text-gray-900">Transcript</h2>
+    <section className="transcript-panel panel">
+      <div className="panel-heading"><h2>Live transcript</h2><span className="panel-meta">{entries.length} messages</span></div>
       {entries.length === 0 ? (
-        <p className="text-sm text-gray-500">
-          No conversation yet. Start a call and speak - the live transcript appears here.
-        </p>
+        <div className="transcript-empty"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h14v12H9l-4 4V4Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M9 8h6m-6 4h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg><p>A space for your conversation.</p><span>Your words and Aria’s replies will appear here as you talk.</span></div>
       ) : (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           {entries.map((e) => (
